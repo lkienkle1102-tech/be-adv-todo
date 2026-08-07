@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.locale import get_locale
 from app.features.auth.router import router as auth_router
 from app.features.tasks.router import router as tasks_router
 
@@ -20,5 +21,5 @@ app.include_router(tasks_router)
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
+async def health(locale: str = Depends(get_locale)):
+    return {"status": "ok", "locale": locale}
