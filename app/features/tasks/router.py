@@ -1,12 +1,24 @@
+import math
 import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.features.auth.models import User
 from app.features.auth.router import current_active_user
-from app.features.tasks.schemas import TaskCreate, TaskRead, TaskUpdate
+from app.features.tasks.errors import TaskErrorCode, TaskValidationError
+from app.features.tasks.schemas import (
+    SortDirection,
+    TaskCreate,
+    TaskPage,
+    TaskRead,
+    TaskSortBy,
+    TaskStatusFilter,
+    TaskUpdate,
+    validate_due_range,
+)
 from app.features.tasks.service import (
     create_task,
     delete_task,
@@ -19,12 +31,46 @@ from app.features.tasks.service import (
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.get("", response_model=list[TaskRead])
+@router.get("", response_model=TaskPage)
 async def read_tasks(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    search: str | None = Query(default=None, max_length=200),
+    task_status: TaskStatusFilter = Query(default=TaskStatusFilter.all, alias="status"),
+    sort_by: TaskSortBy = Query(default=TaskSortBy.due_at),
+    sort_direction: SortDirection = Query(default=SortDirection.asc),
+    due_from: datetime | None = Query(default=None),
+    due_to: datetime | None = Query(default=None),
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
-    return await list_tasks(session, user.id)
+    try:
+        validate_due_range(due_from, due_to)
+    except TaskValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=error.code,
+        ) from error
+
+    tasks, total = await list_tasks(
+        session,
+        user.id,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status_filter=task_status,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        due_from=due_from,
+        due_to=due_to,
+    )
+    return TaskPage(
+        items=tasks,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(total / page_size),
+    )
 
 
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
@@ -45,7 +91,10 @@ async def set_task_status(
 ):
     task = await get_owned_task(session, user.id, task_id)
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=TaskErrorCode.TASK_NOT_FOUND,
+        )
     if payload.is_done is not None:
         task = await update_task_status(session, task, payload.is_done)
     if "due_at" in payload.model_fields_set:
@@ -61,6 +110,9 @@ async def remove_task(
 ):
     task = await get_owned_task(session, user.id, task_id)
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=TaskErrorCode.TASK_NOT_FOUND,
+        )
     await delete_task(session, task)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

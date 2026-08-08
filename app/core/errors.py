@@ -16,6 +16,7 @@ STATUS_ERROR_CODES = {
     403: "FORBIDDEN",
     404: "NOT_FOUND",
     405: "METHOD_NOT_ALLOWED",
+    422: "VALIDATION_ERROR",
 }
 
 ERROR_MESSAGES: dict[str, dict[str, str]] = {
@@ -43,6 +44,25 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "UPDATE_USER_INVALID_PASSWORD": "The password does not meet the security requirements.",
         "ACCESS_TOKEN_ALREADY_EXPIRED": "Your session has expired. Please log in again.",
         "ACCESS_TOKEN_DECODE_ERROR": "Your session is invalid. Please log in again.",
+        "TASK_NOT_FOUND": "The task was not found.",
+        "TASK_TITLE_REQUIRED": "Enter a task name.",
+        "TASK_TITLE_TOO_LONG": "Keep the task name to 200 characters or fewer.",
+        "TASK_TITLE_INVALID": "The task name is invalid.",
+        "TASK_DUE_AT_INVALID": "Enter a valid due date and time.",
+        "TASK_DUE_AT_TIMEZONE_REQUIRED": "The due time must include a timezone.",
+        "TASK_DUE_AT_IN_PAST": "Choose a due time in the future.",
+        "TASK_DUE_RANGE_REQUIRED": "Provide both ends of the due-time range.",
+        "TASK_DUE_RANGE_TIMEZONE_REQUIRED": "Both range values must include a timezone.",
+        "TASK_DUE_RANGE_ORDER_INVALID": "The range start must be earlier than the range end.",
+        "TASK_DUE_RANGE_INVALID": "Enter a valid due-time range.",
+        "TASK_ID_INVALID": "The task ID is invalid.",
+        "TASK_PAGE_INVALID": "The page must be 1 or greater.",
+        "TASK_PAGE_SIZE_INVALID": "The page size must be between 1 and 100.",
+        "TASK_SEARCH_TOO_LONG": "Search text must be 200 characters or fewer.",
+        "TASK_STATUS_FILTER_INVALID": "The task status filter is invalid.",
+        "TASK_SORT_FIELD_INVALID": "The task sort field is invalid.",
+        "TASK_SORT_DIRECTION_INVALID": "The task sort direction is invalid.",
+        "TASK_COMPLETION_STATUS_INVALID": "The task completion status is invalid.",
     },
     "vi": {
         "BAD_REQUEST": "Yêu cầu không thể được xử lý.",
@@ -68,6 +88,25 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "UPDATE_USER_INVALID_PASSWORD": "Mật khẩu chưa đáp ứng yêu cầu bảo mật.",
         "ACCESS_TOKEN_ALREADY_EXPIRED": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
         "ACCESS_TOKEN_DECODE_ERROR": "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.",
+        "TASK_NOT_FOUND": "Không tìm thấy công việc.",
+        "TASK_TITLE_REQUIRED": "Vui lòng nhập tên công việc.",
+        "TASK_TITLE_TOO_LONG": "Tên công việc không được vượt quá 200 ký tự.",
+        "TASK_TITLE_INVALID": "Tên công việc không hợp lệ.",
+        "TASK_DUE_AT_INVALID": "Vui lòng nhập ngày và giờ đến hạn hợp lệ.",
+        "TASK_DUE_AT_TIMEZONE_REQUIRED": "Thời điểm đến hạn phải kèm múi giờ.",
+        "TASK_DUE_AT_IN_PAST": "Vui lòng chọn thời điểm đến hạn trong tương lai.",
+        "TASK_DUE_RANGE_REQUIRED": "Vui lòng nhập đủ thời điểm bắt đầu và kết thúc.",
+        "TASK_DUE_RANGE_TIMEZONE_REQUIRED": "Hai thời điểm trong khoảng phải kèm múi giờ.",
+        "TASK_DUE_RANGE_ORDER_INVALID": "Thời điểm bắt đầu phải trước thời điểm kết thúc.",
+        "TASK_DUE_RANGE_INVALID": "Khoảng thời gian đến hạn không hợp lệ.",
+        "TASK_ID_INVALID": "Mã công việc không hợp lệ.",
+        "TASK_PAGE_INVALID": "Số trang phải lớn hơn hoặc bằng 1.",
+        "TASK_PAGE_SIZE_INVALID": "Số công việc mỗi trang phải từ 1 đến 100.",
+        "TASK_SEARCH_TOO_LONG": "Nội dung tìm kiếm không được vượt quá 200 ký tự.",
+        "TASK_STATUS_FILTER_INVALID": "Bộ lọc trạng thái công việc không hợp lệ.",
+        "TASK_SORT_FIELD_INVALID": "Tiêu chí sắp xếp công việc không hợp lệ.",
+        "TASK_SORT_DIRECTION_INVALID": "Thứ tự sắp xếp công việc không hợp lệ.",
+        "TASK_COMPLETION_STATUS_INVALID": "Trạng thái hoàn thành công việc không hợp lệ.",
     },
 }
 
@@ -108,15 +147,39 @@ async def localized_validation_exception_handler(
     locale = resolve_locale(request.headers.get("accept-language"))
     code = "VALIDATION_ERROR"
     for error in exc.errors():
-        if error.get("loc", ())[-1:] != ("username",):
+        field = error.get("loc", ())[-1:]
+        error_type = error.get("type")
+        if isinstance(error_type, str) and error_type in ERROR_MESSAGES["en"]:
+            code = error_type
+            break
+        if field == ("username",):
+            code = {
+                "missing": "USERNAME_REQUIRED",
+                "string_too_short": "USERNAME_TOO_SHORT",
+                "string_too_long": "USERNAME_TOO_LONG",
+            }.get(error_type, "USERNAME_INVALID")
+            break
+        if not request.url.path.startswith("/tasks"):
             continue
 
-        error_type = error.get("type")
         code = {
-            "missing": "USERNAME_REQUIRED",
-            "string_too_short": "USERNAME_TOO_SHORT",
-            "string_too_long": "USERNAME_TOO_LONG",
-        }.get(error_type, "USERNAME_INVALID")
+            "title": {
+                "missing": "TASK_TITLE_REQUIRED",
+                "string_too_short": "TASK_TITLE_REQUIRED",
+                "string_too_long": "TASK_TITLE_TOO_LONG",
+            }.get(error_type, "TASK_TITLE_INVALID"),
+            "due_at": "TASK_DUE_AT_INVALID",
+            "task_id": "TASK_ID_INVALID",
+            "page": "TASK_PAGE_INVALID",
+            "page_size": "TASK_PAGE_SIZE_INVALID",
+            "search": "TASK_SEARCH_TOO_LONG",
+            "status": "TASK_STATUS_FILTER_INVALID",
+            "sort_by": "TASK_SORT_FIELD_INVALID",
+            "sort_direction": "TASK_SORT_DIRECTION_INVALID",
+            "due_from": "TASK_DUE_RANGE_INVALID",
+            "due_to": "TASK_DUE_RANGE_INVALID",
+            "is_done": "TASK_COMPLETION_STATUS_INVALID",
+        }.get(field[0] if field else None, "VALIDATION_ERROR")
         break
 
     return JSONResponse(

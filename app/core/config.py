@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_env: str = APP_ENV
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/adv_todo"
     jwt_secret: str = "change-me"
-    jwt_lifetime_seconds: int = 3600
+    jwt_lifetime_seconds: int = 28800
 
     google_client_id: str = ""
     google_client_secret: str = ""

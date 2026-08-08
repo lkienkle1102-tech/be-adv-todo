@@ -12,6 +12,7 @@ from app.core.errors import (
     localized_http_exception_handler,
     localized_validation_exception_handler,
 )
+from app.features.tasks.errors import TaskErrorCode
 
 
 class ExampleErrorCode(str, Enum):
@@ -42,6 +43,16 @@ class ErrorMappingTests(unittest.TestCase):
         self.assertEqual(
             get_error_message("LOGIN_BAD_CREDENTIALS", "vi"),
             "Email hoặc mật khẩu không chính xác.",
+        )
+
+    def test_returns_task_message_in_requested_locale(self) -> None:
+        self.assertEqual(
+            get_error_message("TASK_NOT_FOUND", "en"),
+            "The task was not found.",
+        )
+        self.assertEqual(
+            get_error_message("TASK_NOT_FOUND", "vi"),
+            "Không tìm thấy công việc.",
         )
 
     def test_unknown_code_uses_localized_generic_message(self) -> None:
@@ -106,6 +117,94 @@ class ErrorResponseTests(unittest.IsolatedAsyncioTestCase):
             {
                 "code": "USERNAME_TOO_SHORT",
                 "message": "Tên người dùng phải có ít nhất 3 ký tự.",
+            },
+        )
+
+    async def test_task_http_error_uses_specific_localized_code(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "DELETE",
+                "path": "/tasks/00000000-0000-0000-0000-000000000000",
+                "headers": [(b"accept-language", b"vi")],
+            }
+        )
+        exception = StarletteHTTPException(
+            status_code=404,
+            detail=TaskErrorCode.TASK_NOT_FOUND,
+        )
+
+        response = await localized_http_exception_handler(request, exception)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            json.loads(response.body),
+            {
+                "code": "TASK_NOT_FOUND",
+                "message": "Không tìm thấy công việc.",
+            },
+        )
+
+    async def test_task_title_validation_uses_specific_localized_code(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/tasks",
+                "headers": [(b"accept-language", b"vi")],
+            }
+        )
+        exception = RequestValidationError(
+            [
+                {
+                    "type": "string_too_short",
+                    "loc": ("body", "title"),
+                    "msg": "String should have at least 1 character",
+                    "input": "",
+                    "ctx": {"min_length": 1},
+                }
+            ]
+        )
+
+        response = await localized_validation_exception_handler(request, exception)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            json.loads(response.body),
+            {
+                "code": "TASK_TITLE_REQUIRED",
+                "message": "Vui lòng nhập tên công việc.",
+            },
+        )
+
+    async def test_task_custom_validation_code_is_preserved(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/tasks",
+                "headers": [(b"accept-language", b"en")],
+            }
+        )
+        exception = RequestValidationError(
+            [
+                {
+                    "type": "TASK_DUE_AT_IN_PAST",
+                    "loc": ("body", "due_at"),
+                    "msg": "due_at must be in the future",
+                    "input": "2020-01-01T00:00:00Z",
+                }
+            ]
+        )
+
+        response = await localized_validation_exception_handler(request, exception)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            json.loads(response.body),
+            {
+                "code": "TASK_DUE_AT_IN_PAST",
+                "message": "Choose a due time in the future.",
             },
         )
 
