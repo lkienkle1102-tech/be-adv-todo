@@ -26,6 +26,10 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "NOT_FOUND": "The requested resource was not found.",
         "METHOD_NOT_ALLOWED": "This action is not supported.",
         "VALIDATION_ERROR": "Some submitted information is invalid.",
+        "USERNAME_REQUIRED": "Enter your username.",
+        "USERNAME_TOO_SHORT": "Use at least 3 characters for your username.",
+        "USERNAME_TOO_LONG": "Use no more than 50 characters for your username.",
+        "USERNAME_INVALID": "The username contains unsupported characters.",
         "INTERNAL_SERVER_ERROR": "Something went wrong. Please try again.",
         "LOGIN_BAD_CREDENTIALS": "The email or password is incorrect.",
         "LOGIN_USER_NOT_VERIFIED": "Verify your email before logging in.",
@@ -47,6 +51,10 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "NOT_FOUND": "Không tìm thấy tài nguyên được yêu cầu.",
         "METHOD_NOT_ALLOWED": "Thao tác này không được hỗ trợ.",
         "VALIDATION_ERROR": "Một số thông tin đã nhập không hợp lệ.",
+        "USERNAME_REQUIRED": "Vui lòng nhập tên người dùng.",
+        "USERNAME_TOO_SHORT": "Tên người dùng phải có ít nhất 3 ký tự.",
+        "USERNAME_TOO_LONG": "Tên người dùng không được vượt quá 50 ký tự.",
+        "USERNAME_INVALID": "Tên người dùng chứa ký tự không được hỗ trợ.",
         "INTERNAL_SERVER_ERROR": "Đã có lỗi xảy ra. Vui lòng thử lại.",
         "LOGIN_BAD_CREDENTIALS": "Email hoặc mật khẩu không chính xác.",
         "LOGIN_USER_NOT_VERIFIED": "Vui lòng xác minh email trước khi đăng nhập.",
@@ -95,10 +103,22 @@ async def localized_http_exception_handler(
 
 
 async def localized_validation_exception_handler(
-    request: Request, _exc: RequestValidationError
+    request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     locale = resolve_locale(request.headers.get("accept-language"))
     code = "VALIDATION_ERROR"
+    for error in exc.errors():
+        if error.get("loc", ())[-1:] != ("username",):
+            continue
+
+        error_type = error.get("type")
+        code = {
+            "missing": "USERNAME_REQUIRED",
+            "string_too_short": "USERNAME_TOO_SHORT",
+            "string_too_long": "USERNAME_TOO_LONG",
+        }.get(error_type, "USERNAME_INVALID")
+        break
+
     return JSONResponse(
         status_code=422,
         content={"code": code, "message": get_error_message(code, locale)},

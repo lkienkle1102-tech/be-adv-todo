@@ -3,12 +3,14 @@ import unittest
 from enum import Enum
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.errors import (
     extract_error_code,
     get_error_message,
     localized_http_exception_handler,
+    localized_validation_exception_handler,
 )
 
 
@@ -72,6 +74,38 @@ class ErrorResponseTests(unittest.IsolatedAsyncioTestCase):
             {
                 "code": "LOGIN_BAD_CREDENTIALS",
                 "message": "The email or password is incorrect.",
+            },
+        )
+
+    async def test_username_validation_response_uses_specific_localized_code(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/auth/register",
+                "headers": [(b"accept-language", b"vi")],
+            }
+        )
+        exception = RequestValidationError(
+            [
+                {
+                    "type": "string_too_short",
+                    "loc": ("body", "username"),
+                    "msg": "String should have at least 3 characters",
+                    "input": "李小",
+                    "ctx": {"min_length": 3},
+                }
+            ]
+        )
+
+        response = await localized_validation_exception_handler(request, exception)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(
+            json.loads(response.body),
+            {
+                "code": "USERNAME_TOO_SHORT",
+                "message": "Tên người dùng phải có ít nhất 3 ký tự.",
             },
         )
 
