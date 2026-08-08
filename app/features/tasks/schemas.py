@@ -82,16 +82,8 @@ class TaskPage(BaseModel):
 
 
 def validate_due_range(due_from: datetime | None, due_to: datetime | None) -> None:
-    if (due_from is None) != (due_to is None):
-        raise TaskValidationError(TaskErrorCode.TASK_DUE_RANGE_REQUIRED)
-    if due_from is None or due_to is None:
-        return
-    if (
-        due_from.tzinfo is None
-        or due_from.utcoffset() is None
-        or due_to.tzinfo is None
-        or due_to.utcoffset() is None
-    ):
+    values = (value for value in (due_from, due_to) if value is not None)
+    if any(value.tzinfo is None or value.utcoffset() is None for value in values):
         raise TaskValidationError(TaskErrorCode.TASK_DUE_RANGE_TIMEZONE_REQUIRED)
-    if due_from >= due_to:
+    if due_from is not None and due_to is not None and due_from >= due_to:
         raise TaskValidationError(TaskErrorCode.TASK_DUE_RANGE_ORDER_INVALID)

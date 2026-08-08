@@ -66,17 +66,14 @@ class TaskSchemaTests(unittest.TestCase):
             TaskErrorCode.TASK_DUE_AT_IN_PAST.value,
         )
 
-    def test_filter_range_requires_two_ordered_timezone_aware_values(self) -> None:
+    def test_filter_range_accepts_open_ended_and_validates_provided_values(self) -> None:
         start = datetime(2026, 8, 8, 10, 0, tzinfo=timezone.utc)
         end = datetime(2026, 8, 8, 11, 0, tzinfo=timezone.utc)
 
+        validate_due_range(None, None)
+        validate_due_range(start, None)
+        validate_due_range(None, end)
         validate_due_range(start, end)
-        with self.assertRaises(TaskValidationError) as missing_context:
-            validate_due_range(start, None)
-        self.assertEqual(
-            missing_context.exception.code,
-            TaskErrorCode.TASK_DUE_RANGE_REQUIRED,
-        )
         with self.assertRaises(TaskValidationError) as order_context:
             validate_due_range(end, start)
         self.assertEqual(
@@ -84,7 +81,7 @@ class TaskSchemaTests(unittest.TestCase):
             TaskErrorCode.TASK_DUE_RANGE_ORDER_INVALID,
         )
         with self.assertRaises(TaskValidationError) as timezone_context:
-            validate_due_range(start.replace(tzinfo=None), end.replace(tzinfo=None))
+            validate_due_range(None, end.replace(tzinfo=None))
         self.assertEqual(
             timezone_context.exception.code,
             TaskErrorCode.TASK_DUE_RANGE_TIMEZONE_REQUIRED,
