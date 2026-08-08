@@ -1,46 +1,49 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 from pydantic_core import PydanticCustomError
 
 from app.features.tasks.errors import TaskErrorCode, TaskValidationError
 
 
+def normalize_task_title(value: object) -> object:
+    return value.strip() if isinstance(value, str) else value
+
+
+def validate_task_due_at(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise PydanticCustomError(
+            TaskErrorCode.TASK_DUE_AT_TIMEZONE_REQUIRED.value,
+            "due_at must include a timezone",
+        )
+    if value.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+        raise PydanticCustomError(
+            TaskErrorCode.TASK_DUE_AT_IN_PAST.value,
+            "due_at must be in the future",
+        )
+    return value
+
+
+TaskTitle = Annotated[
+    str,
+    BeforeValidator(normalize_task_title),
+    Field(min_length=1, max_length=200),
+]
+TaskDueAt = Annotated[datetime, AfterValidator(validate_task_due_at)]
+
+
 class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    due_at: datetime | None = None
-
-    @field_validator("title", mode="before")
-    @classmethod
-    def normalize_title(cls, value: object) -> object:
-        return value.strip() if isinstance(value, str) else value
-
-    @field_validator("due_at")
-    @classmethod
-    def require_due_at_timezone(cls, value: datetime | None) -> datetime | None:
-        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
-            raise PydanticCustomError(
-                TaskErrorCode.TASK_DUE_AT_TIMEZONE_REQUIRED.value,
-                "due_at must include a timezone",
-            )
-        if value is not None and value.astimezone(timezone.utc) <= datetime.now(timezone.utc):
-            raise PydanticCustomError(
-                TaskErrorCode.TASK_DUE_AT_IN_PAST.value,
-                "due_at must be in the future",
-            )
-        return value
+    title: TaskTitle
+    due_at: TaskDueAt | None = None
 
 
 class TaskUpdate(BaseModel):
+    title: TaskTitle | None = None
     is_done: bool | None = None
-    due_at: datetime | None = None
-
-    @field_validator("due_at")
-    @classmethod
-    def require_due_at_timezone(cls, value: datetime | None) -> datetime | None:
-        return TaskCreate.require_due_at_timezone(value)
+    due_at: TaskDueAt | None = None
 
 
 class TaskRead(BaseModel):

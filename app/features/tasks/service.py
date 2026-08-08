@@ -108,6 +108,24 @@ async def update_task_schedule(
     return task
 
 
+async def update_task_details(
+    session: AsyncSession,
+    task: Task,
+    *,
+    title: str | None,
+    due_at: datetime | None,
+    update_due_at: bool,
+) -> Task:
+    if title is not None:
+        task.title = title
+    if update_due_at:
+        task.due_at = due_at
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+
 async def delete_task(session: AsyncSession, task: Task) -> None:
     await session.delete(task)
     await session.commit()

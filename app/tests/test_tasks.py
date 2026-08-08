@@ -21,6 +21,7 @@ from app.features.tasks.service import (
     get_owned_task,
     list_tasks,
     update_task_schedule,
+    update_task_details,
     update_task_status,
 )
 
@@ -32,6 +33,11 @@ class TaskSchemaTests(unittest.TestCase):
     def test_blank_title_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             TaskCreate(title="   ")
+        with self.assertRaises(ValidationError):
+            TaskUpdate(title="   ")
+
+    def test_update_title_is_trimmed(self) -> None:
+        self.assertEqual(TaskUpdate(title="  Revised plan  ").title, "Revised plan")
 
     def test_schedule_requires_timezone(self) -> None:
         with self.assertRaises(ValidationError) as context:
@@ -209,6 +215,20 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
         due_at = datetime.now(timezone.utc) + timedelta(days=1)
         scheduled = await update_task_schedule(session, task, due_at)
         self.assertEqual(scheduled.due_at, due_at)
+        session.add.assert_called_once_with(task)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(task)
+
+        session.reset_mock()
+        revised = await update_task_details(
+            session,
+            task,
+            title="Revised",
+            due_at=None,
+            update_due_at=True,
+        )
+        self.assertEqual(revised.title, "Revised")
+        self.assertIsNone(revised.due_at)
         session.add.assert_called_once_with(task)
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(task)

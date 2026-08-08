@@ -24,7 +24,7 @@ from app.features.tasks.service import (
     delete_task,
     get_owned_task,
     list_tasks,
-    update_task_schedule,
+    update_task_details,
     update_task_status,
 )
 
@@ -82,6 +82,21 @@ async def add_task(
     return await create_task(session, user.id, payload.title, payload.due_at)
 
 
+@router.get("/{task_id}", response_model=TaskRead)
+async def read_task(
+    task_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    task = await get_owned_task(session, user.id, task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=TaskErrorCode.TASK_NOT_FOUND,
+        )
+    return task
+
+
 @router.patch("/{task_id}", response_model=TaskRead)
 async def set_task_status(
     task_id: uuid.UUID,
@@ -97,8 +112,14 @@ async def set_task_status(
         )
     if payload.is_done is not None:
         task = await update_task_status(session, task, payload.is_done)
-    if "due_at" in payload.model_fields_set:
-        task = await update_task_schedule(session, task, payload.due_at)
+    if payload.title is not None or "due_at" in payload.model_fields_set:
+        task = await update_task_details(
+            session,
+            task,
+            title=payload.title,
+            due_at=payload.due_at,
+            update_due_at="due_at" in payload.model_fields_set,
+        )
     return task
 
 
