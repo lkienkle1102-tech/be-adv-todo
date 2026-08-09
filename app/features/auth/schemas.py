@@ -3,7 +3,7 @@ import unicodedata
 from typing import Annotated, Any
 
 from fastapi_users import schemas
-from pydantic import BeforeValidator, StringConstraints
+from pydantic import BaseModel, BeforeValidator, Field, StringConstraints
 
 
 def normalize_username(value: Any) -> Any:
@@ -33,3 +33,13 @@ class UserCreate(schemas.BaseUserCreate):
 
 class UserUpdate(schemas.BaseUserUpdate):
     username: Username | None = None
+    password: None = None
+
+
+class PasswordUpdate(schemas.BaseUserUpdate):
+    pass
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)

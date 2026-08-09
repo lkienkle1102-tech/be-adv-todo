@@ -55,6 +55,16 @@ class ErrorMappingTests(unittest.TestCase):
             "Không tìm thấy công việc.",
         )
 
+    def test_returns_current_password_error_in_requested_locale(self) -> None:
+        self.assertEqual(
+            get_error_message("CURRENT_PASSWORD_INCORRECT", "en"),
+            "The current password is incorrect.",
+        )
+        self.assertEqual(
+            get_error_message("CURRENT_PASSWORD_INCORRECT", "vi"),
+            "Mật khẩu hiện tại không chính xác.",
+        )
+
     def test_unknown_code_uses_localized_generic_message(self) -> None:
         self.assertEqual(
             get_error_message("UNKNOWN", "en"),
