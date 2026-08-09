@@ -73,12 +73,27 @@ class SortDirection(str, Enum):
     desc = "desc"
 
 
+class TaskSummary(BaseModel):
+    total: int
+    completed: int
+    incomplete: int
+
+
+class TaskStatusCounts(BaseModel):
+    all: int
+    active: int
+    done: int
+    upcoming: int
+
+
 class TaskPage(BaseModel):
     items: list[TaskRead]
     total: int
     page: int
     page_size: int
     total_pages: int
+    summary: TaskSummary
+    status_counts: TaskStatusCounts
 
 
 def validate_due_range(due_from: datetime | None, due_to: datetime | None) -> None:

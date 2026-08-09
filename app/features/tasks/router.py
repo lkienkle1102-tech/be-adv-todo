@@ -16,6 +16,8 @@ from app.features.tasks.schemas import (
     TaskRead,
     TaskSortBy,
     TaskStatusFilter,
+    TaskStatusCounts,
+    TaskSummary,
     TaskUpdate,
     validate_due_range,
 )
@@ -52,7 +54,7 @@ async def read_tasks(
             detail=error.code,
         ) from error
 
-    tasks, total = await list_tasks(
+    tasks, counts = await list_tasks(
         session,
         user.id,
         page=page,
@@ -64,12 +66,24 @@ async def read_tasks(
         due_from=due_from,
         due_to=due_to,
     )
+    selected_total = getattr(counts, f"filtered_{task_status.value}")
     return TaskPage(
         items=tasks,
-        total=total,
+        total=selected_total,
         page=page,
         page_size=page_size,
-        total_pages=math.ceil(total / page_size),
+        total_pages=math.ceil(selected_total / page_size),
+        summary=TaskSummary(
+            total=counts.total,
+            completed=counts.completed,
+            incomplete=counts.incomplete,
+        ),
+        status_counts=TaskStatusCounts(
+            all=counts.filtered_all,
+            active=counts.filtered_active,
+            done=counts.filtered_done,
+            upcoming=counts.filtered_upcoming,
+        ),
     )
 
 

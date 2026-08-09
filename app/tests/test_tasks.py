@@ -1,6 +1,7 @@
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from pydantic import ValidationError
@@ -89,22 +90,37 @@ class TaskSchemaTests(unittest.TestCase):
 
 
 class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def count_row(**overrides: int) -> SimpleNamespace:
+        values = {
+            "total": 1,
+            "completed": 0,
+            "incomplete": 1,
+            "filtered_all": 1,
+            "filtered_active": 1,
+            "filtered_done": 0,
+            "filtered_upcoming": 0,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
     async def test_lists_only_query_result_tasks(self) -> None:
         owner_id = uuid.uuid4()
         expected = [Task(owner_id=owner_id, title="First")]
         scalars = Mock()
         scalars.all.return_value = expected
         count_result = Mock()
-        count_result.scalar_one.return_value = 1
+        count_result.one.return_value = self.count_row()
         task_result = Mock()
         task_result.scalars.return_value = scalars
         session = AsyncMock()
         session.execute.side_effect = [count_result, task_result]
 
-        tasks, total = await list_tasks(session, owner_id)
+        tasks, counts = await list_tasks(session, owner_id)
 
         self.assertEqual(tasks, expected)
-        self.assertEqual(total, 1)
+        self.assertEqual(counts.total, 1)
+        self.assertEqual(counts.filtered_all, 1)
         self.assertEqual(session.execute.await_count, 2)
 
     async def test_lists_with_search_status_range_sort_and_pagination(self) -> None:
@@ -112,7 +128,15 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
         due_from = datetime(2026, 8, 1, tzinfo=timezone.utc)
         due_to = datetime(2026, 9, 1, tzinfo=timezone.utc)
         count_result = Mock()
-        count_result.scalar_one.return_value = 0
+        count_result.one.return_value = self.count_row(
+            total=5,
+            completed=2,
+            incomplete=3,
+            filtered_all=3,
+            filtered_active=2,
+            filtered_done=1,
+            filtered_upcoming=1,
+        )
         scalars = Mock()
         scalars.all.return_value = []
         task_result = Mock()
@@ -120,7 +144,7 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
         session = AsyncMock()
         session.execute.side_effect = [count_result, task_result]
 
-        tasks, total = await list_tasks(
+        tasks, counts = await list_tasks(
             session,
             owner_id,
             page=2,
@@ -134,11 +158,13 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(tasks, [])
-        self.assertEqual(total, 0)
+        self.assertEqual(counts.total, 5)
+        self.assertEqual(counts.filtered_upcoming, 1)
         statements = [str(call.args[0]) for call in session.execute.await_args_list]
         self.assertTrue(all("lower(task.title) LIKE lower" in statement for statement in statements))
-        self.assertIn("task.is_done IS false", statements[0])
-        self.assertIn("task.due_at >", statements[0])
+        self.assertIn("FILTER (WHERE", statements[0])
+        self.assertIn("task.is_done IS false", statements[1])
+        self.assertIn("task.due_at >", statements[1])
         self.assertIn("task.due_at >=", statements[0])
         self.assertIn("task.due_at <=", statements[0])
         self.assertIn("task.title DESC", statements[1])
@@ -155,7 +181,7 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
             TaskStatusFilter.done,
         ):
             count_result = Mock()
-            count_result.scalar_one.return_value = 0
+            count_result.one.return_value = self.count_row()
             scalars = Mock()
             scalars.all.return_value = []
             task_result = Mock()
@@ -164,7 +190,7 @@ class TaskServiceTests(unittest.IsolatedAsyncioTestCase):
             session.execute.side_effect = [count_result, task_result]
 
             await list_tasks(session, owner_id, status_filter=status_filter)
-            statements[status_filter] = str(session.execute.await_args_list[0].args[0])
+            statements[status_filter] = str(session.execute.await_args_list[1].args[0])
 
         self.assertNotIn("task.is_done IS", statements[TaskStatusFilter.all])
         self.assertIn("task.is_done IS false", statements[TaskStatusFilter.active])
